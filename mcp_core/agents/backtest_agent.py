@@ -16,7 +16,6 @@ class BacktestAgent(BaseAgent):
     
     def __init__(self):
         super().__init__()
-        self.logger.info("Backtest Agent initialized")
     
     def get_supported_job_types(self) -> list[JobType]:
         """Return supported job types."""
@@ -32,10 +31,8 @@ class BacktestAgent(BaseAgent):
         Returns:
             Backtest results
         """
-        self.logger.info(f"Starting backtest for job {job.id}")
-        
         # Simulate backtest processing
-        await asyncio.sleep(3)  # Simulate processing time
+        await asyncio.sleep(3)
         
         # Extract job parameters
         strategy = job.payload.get("strategy", "momentum")
@@ -91,7 +88,6 @@ class BacktestAgent(BaseAgent):
             "completed_at": datetime.utcnow().isoformat()
         }
         
-        self.logger.info(f"Backtest completed for job {job.id}")
         return result
     
     async def validate_job(self, job: Job) -> bool:
@@ -103,7 +99,6 @@ class BacktestAgent(BaseAgent):
         required_params = ["strategy", "ticker"]
         for param in required_params:
             if param not in job.payload:
-                self.logger.error(f"Missing required parameter: {param}")
                 return False
         
         return True

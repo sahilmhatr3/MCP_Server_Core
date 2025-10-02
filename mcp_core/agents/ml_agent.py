@@ -16,7 +16,6 @@ class MLAgent(BaseAgent):
     
     def __init__(self):
         super().__init__()
-        self.logger.info("ML Agent initialized")
     
     def get_supported_job_types(self) -> list[JobType]:
         """Return supported job types."""
@@ -32,10 +31,8 @@ class MLAgent(BaseAgent):
         Returns:
             Experiment results
         """
-        self.logger.info(f"Starting ML experiment for job {job.id}")
-        
         # Simulate ML experiment
-        await asyncio.sleep(2)  # Simulate processing time
+        await asyncio.sleep(2)
         
         # Extract job parameters
         model_type = job.payload.get("model", "linear")
@@ -66,7 +63,6 @@ class MLAgent(BaseAgent):
             "completed_at": datetime.utcnow().isoformat()
         }
         
-        self.logger.info(f"ML experiment completed for job {job.id}")
         return result
     
     async def validate_job(self, job: Job) -> bool:
@@ -78,7 +74,6 @@ class MLAgent(BaseAgent):
         required_params = ["model", "dataset"]
         for param in required_params:
             if param not in job.payload:
-                self.logger.error(f"Missing required parameter: {param}")
                 return False
         
         return True

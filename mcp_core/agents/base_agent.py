@@ -70,8 +70,6 @@ class AgentRegistry:
             agent_class: The agent class to register
         """
         cls._agents[job_type] = agent_class
-        logger = logging.getLogger("agent_registry")
-        logger.info(f"Registered agent {agent_class.__name__} for job type {job_type}")
     
     @classmethod
     def get_agent(cls, job_type: JobType) -> Optional[BaseAgent]:

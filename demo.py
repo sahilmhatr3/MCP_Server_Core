@@ -25,7 +25,7 @@ async def main():
     # Get server instance
     server = get_server()
     
-    print("🚀 MCP Core Demo")
+    print("MCP Core Demo")
     print("=" * 50)
     
     # Test 1: Submit ML experiment job
@@ -114,7 +114,7 @@ async def main():
     for job in all_jobs:
         print(f"  {job.id[:8]}... | {job.type} | {job.status} | {job.created_at.strftime('%H:%M:%S')}")
     
-    print("\n✅ Demo completed successfully!")
+    print("\nDemo completed successfully!")
 
 
 if __name__ == "__main__":

@@ -47,10 +47,6 @@ class MCPServer:
         
         # Store job
         self.jobs[job.id] = job
-        log_job_event(self.logger, job.id, "job_submitted", {
-            "type": job.type,
-            "payload_keys": list(job.payload.keys())
-        })
         
         # Start execution
         task = asyncio.create_task(self._execute_job(job))
@@ -112,7 +108,6 @@ class MCPServer:
         job.status = JobStatus.CANCELLED
         job.completed_at = datetime.utcnow()
         
-        log_job_event(self.logger, job_id, "job_cancelled")
         return True
     
     async def list_jobs(self, status_filter: Optional[JobStatus] = None) -> List[JobResponse]:
@@ -157,7 +152,6 @@ class MCPServer:
             # Update status to running
             job.status = JobStatus.RUNNING
             job.started_at = datetime.utcnow()
-            log_job_event(self.logger, job.id, "job_started")
             
             # Execute job
             result = await AgentRegistry.execute_job(job)
@@ -167,15 +161,10 @@ class MCPServer:
             job.completed_at = datetime.utcnow()
             job.result = result
             
-            log_job_event(self.logger, job.id, "job_completed", {
-                "result_keys": list(result.keys()) if isinstance(result, dict) else None
-            })
-            
         except asyncio.CancelledError:
             # Job was cancelled
             job.status = JobStatus.CANCELLED
             job.completed_at = datetime.utcnow()
-            log_job_event(self.logger, job.id, "job_cancelled")
             raise
             
         except Exception as e:
@@ -184,10 +173,6 @@ class MCPServer:
             job.completed_at = datetime.utcnow()
             job.error = str(e)
             
-            log_job_event(self.logger, job.id, "job_failed", {
-                "error": str(e)
-            })
-            
         finally:
             # Clean up running task
             if job.id in self.running_tasks:
@@ -195,8 +180,6 @@ class MCPServer:
     
     async def shutdown(self) -> None:
         """Gracefully shutdown the server."""
-        self.logger.info("Shutting down MCP Server...")
-        
         # Cancel all running tasks
         for task in self.running_tasks.values():
             task.cancel()
@@ -206,7 +189,6 @@ class MCPServer:
             await asyncio.gather(*self.running_tasks.values(), return_exceptions=True)
         
         self._shutdown_event.set()
-        self.logger.info("MCP Server shutdown complete")
 
 
 # Global server instance
@@ -224,5 +206,4 @@ def get_server() -> MCPServer:
 async def start_server() -> MCPServer:
     """Start the MCP server."""
     server = get_server()
-    server.logger.info("MCP Server started")
     return server
