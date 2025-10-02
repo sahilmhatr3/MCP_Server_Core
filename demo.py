@@ -8,8 +8,6 @@ import json
 from mcp_core.mcp_server import get_server
 from mcp_core.jobs.job_schema import JobSubmission, JobType
 from mcp_core.agents.base_agent import AgentRegistry
-from mcp_core.agents.ml_agent import MLAgent
-from mcp_core.agents.backtest_agent import BacktestAgent
 from mcp_core.utils.logger import setup_logging
 
 
@@ -18,9 +16,7 @@ async def main():
     # Set up logging
     setup_logging(level="INFO")
     
-    # Register agents
-    AgentRegistry.register(JobType.ML_EXPERIMENT, MLAgent)
-    AgentRegistry.register(JobType.BACKTEST, BacktestAgent)
+    # Note: Agents are now registered externally by the applications that use MCP Core
     
     # Get server instance
     server = get_server()

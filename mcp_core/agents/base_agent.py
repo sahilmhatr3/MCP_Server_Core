@@ -59,6 +59,7 @@ class AgentRegistry:
     
     _agents: Dict[JobType, Type[BaseAgent]] = {}
     _instances: Dict[JobType, BaseAgent] = {}
+    _external_agents: Dict[JobType, BaseAgent] = {}
     
     @classmethod
     def register(cls, job_type: JobType, agent_class: Type[BaseAgent]):
@@ -72,9 +73,21 @@ class AgentRegistry:
         cls._agents[job_type] = agent_class
     
     @classmethod
+    def register_external_agent(cls, job_type: JobType, agent_instance: BaseAgent):
+        """
+        Register an external agent instance for a specific job type.
+        
+        Args:
+            job_type: The job type this agent handles
+            agent_instance: The agent instance to register
+        """
+        cls._external_agents[job_type] = agent_instance
+    
+    @classmethod
     def get_agent(cls, job_type: JobType) -> Optional[BaseAgent]:
         """
         Get an agent instance for the given job type.
+        Prioritizes external agents over internal ones.
         
         Args:
             job_type: The job type to get an agent for
@@ -82,6 +95,11 @@ class AgentRegistry:
         Returns:
             Agent instance or None if not found
         """
+        # Check external agents first
+        if job_type in cls._external_agents:
+            return cls._external_agents[job_type]
+        
+        # Fall back to internal agents
         if job_type not in cls._agents:
             return None
         
@@ -100,7 +118,9 @@ class AgentRegistry:
         Returns:
             List of supported job types
         """
-        return list(cls._agents.keys())
+        # Combine internal and external agents
+        all_types = set(cls._agents.keys()) | set(cls._external_agents.keys())
+        return list(all_types)
     
     @classmethod
     def can_handle_job(cls, job: Job) -> bool:
@@ -113,7 +133,7 @@ class AgentRegistry:
         Returns:
             True if an agent can handle the job
         """
-        return job.type in cls._agents
+        return job.type in cls._agents or job.type in cls._external_agents
     
     @classmethod
     async def execute_job(cls, job: Job) -> Dict[str, Any]:

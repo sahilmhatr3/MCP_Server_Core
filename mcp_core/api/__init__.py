@@ -11,14 +11,7 @@ import click
 from ..mcp_server import get_server
 from ..jobs.job_schema import JobSubmission, JobType, JobStatus
 from ..agents.base_agent import AgentRegistry
-from ..agents.ml_agent import MLAgent
-from ..agents.backtest_agent import BacktestAgent
 from ..utils.logger import setup_logging
-
-
-# Register default agents
-AgentRegistry.register(JobType.ML_EXPERIMENT, MLAgent)
-AgentRegistry.register(JobType.BACKTEST, BacktestAgent)
 
 
 @click.group()
