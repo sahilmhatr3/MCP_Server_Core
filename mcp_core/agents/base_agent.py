@@ -55,60 +55,34 @@ class BaseAgent(ABC):
 
 
 class AgentRegistry:
-    """Registry for managing agents and routing jobs."""
+    """Registry for managing external microservices and routing jobs."""
     
-    _agents: Dict[JobType, Type[BaseAgent]] = {}
-    _instances: Dict[JobType, BaseAgent] = {}
-    _external_agents: Dict[JobType, BaseAgent] = {}
+    _external_services: Dict[JobType, str] = {}  # job_type -> service_url
     
     @classmethod
-    def register(cls, job_type: JobType, agent_class: Type[BaseAgent]):
+    def register_external_service(cls, job_type: JobType, service_url: str):
         """
-        Register an agent class for a specific job type.
+        Register an external microservice for a specific job type.
         
         Args:
-            job_type: The job type this agent handles
-            agent_class: The agent class to register
+            job_type: The job type this service handles
+            service_url: The base URL of the external service
         """
-        cls._agents[job_type] = agent_class
+        cls._external_services[job_type] = service_url
+        logging.getLogger("agent_registry").info(f"Registered external service {service_url} for job type {job_type}")
     
     @classmethod
-    def register_external_agent(cls, job_type: JobType, agent_instance: BaseAgent):
+    def get_service_url(cls, job_type: JobType) -> Optional[str]:
         """
-        Register an external agent instance for a specific job type.
+        Get the service URL for the given job type.
         
         Args:
-            job_type: The job type this agent handles
-            agent_instance: The agent instance to register
-        """
-        cls._external_agents[job_type] = agent_instance
-    
-    @classmethod
-    def get_agent(cls, job_type: JobType) -> Optional[BaseAgent]:
-        """
-        Get an agent instance for the given job type.
-        Prioritizes external agents over internal ones.
-        
-        Args:
-            job_type: The job type to get an agent for
+            job_type: The job type to get service URL for
             
         Returns:
-            Agent instance or None if not found
+            Service URL or None if not found
         """
-        # Check external agents first
-        if job_type in cls._external_agents:
-            return cls._external_agents[job_type]
-        
-        # Fall back to internal agents
-        if job_type not in cls._agents:
-            return None
-        
-        # Create instance if not exists
-        if job_type not in cls._instances:
-            agent_class = cls._agents[job_type]
-            cls._instances[job_type] = agent_class()
-        
-        return cls._instances[job_type]
+        return cls._external_services.get(job_type)
     
     @classmethod
     def get_supported_job_types(cls) -> list[JobType]:
@@ -118,50 +92,22 @@ class AgentRegistry:
         Returns:
             List of supported job types
         """
-        # Combine internal and external agents
-        all_types = set(cls._agents.keys()) | set(cls._external_agents.keys())
-        return list(all_types)
+        return list(cls._external_services.keys())
     
     @classmethod
     def can_handle_job(cls, job: Job) -> bool:
         """
-        Check if there's an agent that can handle the given job.
+        Check if there's a service that can handle the given job.
         
         Args:
             job: The job to check
             
         Returns:
-            True if an agent can handle the job
+            True if a service can handle the job
         """
-        return job.type in cls._agents or job.type in cls._external_agents
-    
-    @classmethod
-    async def execute_job(cls, job: Job) -> Dict[str, Any]:
-        """
-        Execute a job using the appropriate agent.
-        
-        Args:
-            job: The job to execute
-            
-        Returns:
-            Execution result
-            
-        Raises:
-            ValueError: If no agent is registered for the job type
-        """
-        agent = cls.get_agent(job.type)
-        if not agent:
-            raise ValueError(f"No agent registered for job type: {job.type}")
-        
-        # Validate job
-        if not await agent.validate_job(job):
-            raise ValueError(f"Agent {agent.__class__.__name__} cannot handle job {job.id}")
-        
-        # Execute job
-        return await agent.execute(job)
+        return job.type in cls._external_services
     
     @classmethod
     def clear(cls):
-        """Clear all registered agents (useful for testing)."""
-        cls._agents.clear()
-        cls._instances.clear()
+        """Clear all registered services (useful for testing)."""
+        cls._external_services.clear()

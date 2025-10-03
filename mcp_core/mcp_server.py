@@ -3,12 +3,14 @@ Main MCP Server - Job orchestration and lifecycle management.
 """
 
 import asyncio
-from typing import Dict, Optional, List
+import aiohttp
+from typing import Dict, Optional, List, Any
 from datetime import datetime
 import logging
 
 from .jobs.job_schema import Job, JobStatus, JobSubmission, JobResponse
 from .agents.base_agent import AgentRegistry
+from .artifacts.artifact_registry import ArtifactRegistry
 from .utils.logger import get_logger, log_job_event
 
 
@@ -20,6 +22,8 @@ class MCPServer:
         self.jobs: Dict[str, Job] = {}
         self.running_tasks: Dict[str, asyncio.Task] = {}
         self._shutdown_event = asyncio.Event()
+        self.artifact_registry = ArtifactRegistry()
+        self._http_session: Optional[aiohttp.ClientSession] = None
         
     async def submit_job(self, job_submission: JobSubmission) -> str:
         """
@@ -41,9 +45,9 @@ class MCPServer:
             metadata=job_submission.metadata or {}
         )
         
-        # Check if agent is available
+        # Check if external service is available
         if not AgentRegistry.can_handle_job(job):
-            raise ValueError(f"No agent available for job type: {job.type}")
+            raise ValueError(f"No external service available for job type: {job.type}")
         
         # Store job
         self.jobs[job.id] = job
@@ -110,12 +114,13 @@ class MCPServer:
         
         return True
     
-    async def list_jobs(self, status_filter: Optional[JobStatus] = None) -> List[JobResponse]:
+    async def list_jobs(self, status_filter: Optional[JobStatus] = None, limit: Optional[int] = None) -> List[JobResponse]:
         """
         List all jobs, optionally filtered by status.
         
         Args:
             status_filter: Optional status filter
+            limit: Maximum number of jobs to return
             
         Returns:
             List of job responses
@@ -124,6 +129,13 @@ class MCPServer:
         
         if status_filter:
             jobs = [job for job in jobs if job.status == status_filter]
+        
+        # Sort by creation time (newest first)
+        jobs.sort(key=lambda x: x.created_at, reverse=True)
+        
+        # Apply limit
+        if limit:
+            jobs = jobs[:limit]
         
         return [
             JobResponse(
@@ -143,7 +155,7 @@ class MCPServer:
     
     async def _execute_job(self, job: Job) -> None:
         """
-        Execute a job using the appropriate agent.
+        Execute a job using the appropriate external service.
         
         Args:
             job: Job to execute
@@ -153,13 +165,21 @@ class MCPServer:
             job.status = JobStatus.RUNNING
             job.started_at = datetime.utcnow()
             
-            # Execute job
-            result = await AgentRegistry.execute_job(job)
+            # Get service URL for job type
+            service_url = AgentRegistry.get_service_url(job.type)
+            if not service_url:
+                raise ValueError(f"No service URL configured for job type: {job.type}")
+            
+            # Execute job via external service
+            result = await self._execute_job_via_service(job, service_url)
             
             # Update job with result
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.utcnow()
             job.result = result
+            
+            # Register any artifacts returned by the service
+            await self._register_service_artifacts(job, result)
             
         except asyncio.CancelledError:
             # Job was cancelled
@@ -172,11 +192,83 @@ class MCPServer:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.utcnow()
             job.error = str(e)
+            self.logger.error(f"Job {job.id} failed: {e}")
             
         finally:
             # Clean up running task
             if job.id in self.running_tasks:
                 del self.running_tasks[job.id]
+    
+    async def _execute_job_via_service(self, job: Job, service_url: str) -> Dict[str, Any]:
+        """
+        Execute a job via external service HTTP API.
+        
+        Args:
+            job: Job to execute
+            service_url: Base URL of the external service
+            
+        Returns:
+            Execution result from the service
+        """
+        if not self._http_session:
+            self._http_session = aiohttp.ClientSession()
+        
+        # Prepare job data for the service
+        job_data = {
+            "job_id": job.id,
+            "type": job.type,
+            "payload": job.payload,
+            "metadata": job.metadata
+        }
+        
+        try:
+            async with self._http_session.post(
+                f"{service_url}/execute",
+                json=job_data,
+                timeout=aiohttp.ClientTimeout(total=3600)  # 1 hour timeout
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Service returned status {response.status}: {error_text}")
+                    
+        except aiohttp.ClientError as e:
+            raise Exception(f"Failed to communicate with service {service_url}: {e}")
+    
+    async def _register_service_artifacts(self, job: Job, result: Dict[str, Any]) -> None:
+        """
+        Register artifacts returned by the service.
+        
+        Args:
+            job: The completed job
+            result: Result from the service
+        """
+        artifacts = result.get("artifacts", [])
+        
+        for artifact_data in artifacts:
+            try:
+                from .artifacts.artifact_schema import ArtifactRegistration
+                
+                registration = ArtifactRegistration(
+                    name=artifact_data.get("name", f"artifact_{job.id}"),
+                    type=artifact_data.get("type", "other"),
+                    storage_location=artifact_data.get("storage_location", ""),
+                    description=artifact_data.get("description"),
+                    service_id=artifact_data.get("service_id"),
+                    job_id=job.id,
+                    dependencies=artifact_data.get("dependencies", []),
+                    size_bytes=artifact_data.get("size_bytes"),
+                    checksum=artifact_data.get("checksum"),
+                    tags=artifact_data.get("tags", []),
+                    metadata=artifact_data.get("metadata", {})
+                )
+                
+                await self.artifact_registry.register_artifact(registration)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to register artifact for job {job.id}: {e}")
     
     async def shutdown(self) -> None:
         """Gracefully shutdown the server."""
@@ -187,6 +279,10 @@ class MCPServer:
         # Wait for tasks to complete
         if self.running_tasks:
             await asyncio.gather(*self.running_tasks.values(), return_exceptions=True)
+        
+        # Close HTTP session
+        if self._http_session:
+            await self._http_session.close()
         
         self._shutdown_event.set()
 

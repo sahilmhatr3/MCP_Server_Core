@@ -11,14 +11,7 @@ import click
 from ..mcp_server import get_server
 from ..jobs.job_schema import JobSubmission, JobType, JobStatus
 from ..agents.base_agent import AgentRegistry
-from ..agents.ml_agent import MLAgent
-from ..agents.backtest_agent import BacktestAgent
 from ..utils.logger import setup_logging
-
-
-# Register default agents
-AgentRegistry.register(JobType.ML_EXPERIMENT, MLAgent)
-AgentRegistry.register(JobType.BACKTEST, BacktestAgent)
 
 
 @click.group()
@@ -192,6 +185,47 @@ def agents():
     except Exception as e:
         click.echo(f"Error listing agents: {e}", err=True)
         sys.exit(1)
+
+
+@cli.command()
+@click.option('--host', default='0.0.0.0', help='Host to bind to')
+@click.option('--port', default=8000, help='Port to bind to')
+@click.option('--reload', is_flag=True, help='Enable auto-reload for development')
+def serve(host: str, port: int, reload: bool):
+    """Start the MCP Orchestrator REST API server."""
+    from ..api.server import run_server
+    run_server(host=host, port=port, reload=reload)
+
+
+@cli.command()
+@click.option('--job-type', required=True, 
+              type=click.Choice(['ml_experiment', 'backtest']),
+              help='Job type to register service for')
+@click.option('--service-url', required=True, help='Base URL of the external service')
+def register_service(job_type: str, service_url: str):
+    """Register an external microservice."""
+    from ..jobs.job_schema import JobType
+    from ..agents.base_agent import AgentRegistry
+    
+    job_type_enum = JobType(job_type)
+    AgentRegistry.register_external_service(job_type_enum, service_url)
+    click.echo(f"Registered {job_type} service at {service_url}")
+
+
+@cli.command()
+def list_services():
+    """List registered external services."""
+    from ..agents.base_agent import AgentRegistry
+    
+    services = AgentRegistry.get_supported_job_types()
+    if not services:
+        click.echo("No external services registered")
+        return
+    
+    click.echo("Registered external services:")
+    for job_type in services:
+        service_url = AgentRegistry.get_service_url(job_type)
+        click.echo(f"  {job_type}: {service_url}")
 
 
 if __name__ == '__main__':

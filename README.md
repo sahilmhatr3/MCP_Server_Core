@@ -1,275 +1,193 @@
-# MCP Core - Job Orchestration Server
+# MCP Orchestrator
 
-A lightweight, extensible job orchestration server that serves as the backbone for distributed, agent-driven projects such as ML experiment trackers and financial backtesters.
-
-## Features
-
-- **Job Lifecycle Management**: Submit, monitor, and retrieve results from distributed jobs
-- **Agent/Plugin Registry**: Pluggable architecture for domain-specific job handlers
-- **Async Processing**: Built on Python asyncio for efficient concurrent execution
-- **CLI & API Interfaces**: Command-line tools and programmatic API access
-- **Comprehensive Logging**: Structured logging with job tracking and error reporting
-- **Type Safety**: Full type hints and Pydantic models for robust data validation
-- **Extensible Design**: Easy integration with cloud/distributed frameworks
-
-## Installation/Setup
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd MCP_Server_Core
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-## Basic Usage (CLI)
-
-```bash
-# List registered agents
-python -m mcp_core.api.cli agents
-
-# Submit an ML experiment job
-python -m mcp_core.api.cli submit --type ml_experiment --config '{"model": "linear", "dataset": "iris", "epochs": 10}'
-
-# Check job status
-python -m mcp_core.api.cli status --job-id <job_id>
-
-# List all jobs
-python -m mcp_core.api.cli list-jobs
-
-# Cancel a running job
-python -m mcp_core.api.cli cancel --job-id <job_id>
-```
-
-### Programmatic Usage
-
-```python
-import asyncio
-from mcp_core.mcp_server import get_server
-from mcp_core.jobs.job_schema import JobSubmission, JobType
-
-async def main():
-    server = get_server()
-    
-    # Submit a job
-    job_submission = JobSubmission(
-        type=JobType.ML_EXPERIMENT,
-        payload={"model": "neural", "dataset": "mnist", "epochs": 5}
-    )
-    
-    job_id = await server.submit_job(job_submission)
-    print(f"Job submitted: {job_id}")
-    
-    # Monitor job status
-    while True:
-        status = await server.get_job_status(job_id)
-        print(f"Status: {status.status}")
-        
-        if status.status in ["completed", "failed", "cancelled"]:
-            if status.result:
-                print(f"Result: {status.result}")
-            break
-        
-        await asyncio.sleep(1)
-
-asyncio.run(main())
-```
+A distributed microservices platform for orchestrating machine learning experiments and quantitative trading backtests.
 
 ## Architecture
 
-### Core Components
+The MCP Orchestrator follows a hub-and-spoke microservices architecture:
 
-```
-MCP Core
-├── Job Management
-│   ├── Job submission & validation
-│   ├── Status tracking & monitoring
-│   ├── Result storage & retrieval
-│   └── Job cancellation & cleanup
-├── Agent Registry
-│   ├── Dynamic agent discovery
-│   ├── Job type routing
-│   ├── Agent lifecycle management
-│   └── Error handling & fallbacks
-├── Execution Engine
-│   ├── Async job processing
-│   ├── Concurrent execution
-│   ├── Resource management
-│   └── Distributed execution hooks
-└── API Layer
-    ├── CLI interface
-    ├── REST API (planned)
-    ├── WebSocket support (planned)
-    └── SDK integration
-```
+- **MCP Orchestrator** - Central coordination hub
+- **ML Experiment Microservice** - Machine learning execution engine  
+- **Backtest Engine Microservice** - Quantitative trading simulation engine
 
-### Job Lifecycle
+## Features
 
-```mermaid
-graph TD
-    A[Job Submission] --> B[Validation]
-    B --> C[Agent Assignment]
-    C --> D[Queue Processing]
-    D --> E[Execution]
-    E --> F[Result Storage]
-    F --> G[Status Update]
-    
-    E --> H[Error Handling]
-    H --> I[Failure Status]
-    
-    D --> J[Cancellation]
-    J --> K[Cancelled Status]
-```
+- REST API server with FastAPI and OpenAPI documentation
+- Central artifact registry with metadata and provenance tracking
+- External microservice communication via HTTP APIs
+- Job orchestration with status tracking and error handling
+- CLI interface for service management
+- Workflow chaining through artifact references
 
-### Project Structure
+## Quick Start
 
-```
-MCP_Server_Core/
-├── mcp_core/
-│   ├── __init__.py
-│   ├── mcp_server.py          # Main orchestrator
-│   ├── jobs/
-│   │   ├── __init__.py
-│   │   └── job_schema.py      # Job models & enums
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── base_agent.py      # Abstract agent class
-│   │   ├── ml_agent.py        # Example ML experiment agent
-│   │   └── backtest_agent.py  # Example financial backtest agent
-│   ├── api/
-│   │   ├── __init__.py
-│   │   └── cli.py             # CLI interface
-│   └── utils/
-│       ├── __init__.py
-│       └── logger.py          # Logging utilities
-├── tests/
-│   ├── __init__.py
-│   └── test_core.py           # Unit tests
-├── demo.py                    # Demo script
-├── requirements.txt           # Dependencies
-└── README.md                  # Documentation
-```
-
-## Supported Job Types
-
-The system supports various job types through the agent registry. Job types are defined as enums and can be extended by registering new agents.
-
-### Creating Custom Agents
-
-```python
-from mcp_core.agents.base_agent import BaseAgent
-from mcp_core.jobs.job_schema import Job, JobType
-from typing import Dict, Any
-
-class CustomAgent(BaseAgent):
-    """Custom agent for specific domain tasks."""
-    
-    def get_supported_job_types(self) -> list[JobType]:
-        return [JobType.GENERIC]  # or custom job type
-    
-    async def execute(self, job: Job) -> Dict[str, Any]:
-        """Execute the job and return results."""
-        # Your custom logic here
-        result = {
-            "status": "success",
-            "data": job.payload,
-            "processed_at": datetime.utcnow().isoformat()
-        }
-        return result
-    
-    async def validate_job(self, job: Job) -> bool:
-        """Validate job parameters."""
-        return await super().validate_job(job)
-
-# Register the agent
-from mcp_core.agents.base_agent import AgentRegistry
-AgentRegistry.register(JobType.GENERIC, CustomAgent)
-```
-
-## Performance and Monitoring
-
-### Logging
-
-MCP Core provides structured logging for monitoring and debugging:
-
-```python
-# Enable JSON logging
-from mcp_core.utils.logger import setup_logging
-setup_logging(level="INFO", json_format=True)
-
-# Custom log events
-from mcp_core.utils.logger import log_job_event
-log_job_event(logger, job_id, "custom_event", {"metric": "value"})
-```
-
-### Metrics
-
-Key metrics to monitor in production:
-
-- Job submission rate
-- Job completion rate
-- Average execution time
-- Error rates by job type
-- Agent utilization
-- Queue depth
-
-### Running Tests
+### 1. Install Dependencies
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Run specific test file
-python -m pytest tests/test_core.py -v
-
-# Run with coverage
-python -m pytest tests/ --cov=mcp_core --cov-report=html
+pip install -r requirements.txt
 ```
 
-### Demo Script
+### 2. Start the Orchestrator
 
 ```bash
-# Run the demo to see MCP Core in action
-python demo.py
+python -m mcp_core.api.cli serve
+```
+
+### 3. Register External Services
+
+```bash
+# Register ML microservice
+python -m mcp_core.api.cli register-service --job-type ml_experiment --service-url http://localhost:8001
+
+# Register backtest microservice  
+python -m mcp_core.api.cli register-service --job-type backtest --service-url http://localhost:8002
+```
+
+### 4. Access API Documentation
+
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- Health Check: http://localhost:8000/health
+
+## API Endpoints
+
+### Jobs
+- `POST /jobs` - Submit a new job
+- `GET /jobs/{job_id}` - Get job status
+- `GET /jobs` - List jobs with filtering
+- `DELETE /jobs/{job_id}` - Cancel a job
+
+### Artifacts
+- `POST /artifacts` - Register an artifact
+- `GET /artifacts/{artifact_id}` - Get artifact details
+- `GET /artifacts` - List artifacts with filtering
+- `GET /artifacts/job/{job_id}` - Get artifacts by job
+- `GET /artifacts/{artifact_id}/dependencies` - Get artifact dependencies
+
+### Health
+- `GET /health` - Health check
+- `GET /health/ready` - Readiness check
+
+## CLI Commands
+
+```bash
+# Start server
+python -m mcp_core.api.cli serve [--host HOST] [--port PORT] [--reload]
+
+# Register external service
+python -m mcp_core.api.cli register-service --job-type TYPE --service-url URL
+
+# List registered services
+python -m mcp_core.api.cli list-services
+
+# Submit job
+python -m mcp_core.api.cli submit --type TYPE --config CONFIG [--metadata METADATA]
+
+# Get job status
+python -m mcp_core.api.cli status JOB_ID
+
+# List jobs
+python -m mcp_core.api.cli list-jobs [--status-filter STATUS]
+```
+
+## External Service Integration
+
+External microservices must implement the following API contract:
+
+### Job Execution Endpoint
+```
+POST /execute
+Content-Type: application/json
+
+{
+  "job_id": "uuid",
+  "type": "ml_experiment|backtest",
+  "payload": {...},
+  "metadata": {...}
+}
+```
+
+### Response Format
+```json
+{
+  "status": "completed|failed",
+  "result": {...},
+  "artifacts": [
+    {
+      "name": "model.pkl",
+      "type": "model",
+      "storage_location": "/artifacts/model.pkl",
+      "description": "Trained ML model",
+      "service_id": "ml-service-1",
+      "size_bytes": 1024,
+      "checksum": "sha256:...",
+      "tags": ["production", "v1.0"],
+      "metadata": {...}
+    }
+  ]
+}
+```
+
+## Artifact Registry
+
+The central artifact registry tracks:
+
+- Metadata: Name, type, description, creation time
+- Storage: Location, size, checksum
+- Provenance: Job ID, service ID, dependencies
+- Workflow: References and dependencies for chaining
+
+### Artifact Types
+- `model` - Trained ML models
+- `plot` - Visualizations and charts
+- `report` - Analysis reports
+- `log` - Execution logs
+- `metrics` - Performance metrics
+- `data` - Processed datasets
+- `config` - Configuration files
+- `other` - Miscellaneous artifacts
+
+## Workflow Chaining
+
+Jobs can reference artifacts from previous jobs:
+
+```json
+{
+  "type": "backtest",
+  "payload": {
+    "strategy": "ml_signal",
+    "model_artifact_id": "artifact-uuid-123",
+    "parameters": {...}
+  }
+}
+```
+
+## Project Structure
+
+```
+mcp_core/
+├── agents/           # External service registry
+├── api/              # REST API endpoints and server
+├── artifacts/        # Artifact registry system
+├── jobs/             # Job schemas and models
+├── utils/            # Logging and utilities
+└── mcp_server.py     # Main orchestrator server
 ```
 
 ## Development
 
-### Extending for Production
-
-The MCP Core is designed with extensibility in mind. Key integration points for production deployment:
-
-1. **Distributed Execution**: Replace local async processing with Celery, Dask, or Ray
-2. **Job Persistence**: Add database storage for job state persistence
-3. **Message Queues**: Integrate with Redis, RabbitMQ, or Apache Kafka
-4. **Monitoring**: Add Prometheus metrics and Grafana dashboards
-5. **Authentication**: Implement API key or OAuth2 authentication
-6. **Scaling**: Deploy with Docker and Kubernetes
-
-### Example Production Extensions
-
-```python
-# Database persistence
-class DatabaseJobStore:
-    async def save_job(self, job: Job):
-        # Save to PostgreSQL/MongoDB
-        pass
-
-# Distributed execution
-class CeleryExecutor:
-    async def execute_job(self, job: Job):
-        # Submit to Celery workers
-        pass
-
-# Message queue integration
-class RedisQueue:
-    async def enqueue_job(self, job: Job):
-        # Add to Redis queue
-        pass
+### Running Tests
+```bash
+pytest tests/
 ```
 
+## Next Steps
+
+To complete the distributed platform:
+
+1. **Implement ML Microservice** - Create `ml-experiment-microservice` repo
+2. **Implement Backtest Microservice** - Create `backtest-engine-microservice` repo  
+3. **Add Cloud Storage** - Google Drive integration for artifacts
+4. **Add Authentication** - Service-to-service authentication
+5. **Add Persistence** - Database storage for jobs and artifacts
+6. **Add Monitoring** - Metrics, logging, and health checks
